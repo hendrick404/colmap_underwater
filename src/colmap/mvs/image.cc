@@ -56,6 +56,7 @@ Image::Image(const std::string& path,
 
 void Image::SetBitmap(const Bitmap& bitmap) {
   bitmap_ = bitmap;
+  // TODO: Fix this
   // CHECK_EQ(width_, bitmap_.Width());
   // CHECK_EQ(height_, bitmap_.Height());
   width_ = bitmap_.Width();

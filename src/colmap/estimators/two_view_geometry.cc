@@ -869,11 +869,11 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
   tgt_camera.SetPrincipalPointX(camera.PrincipalPointX());
   tgt_camera.SetPrincipalPointY(camera.PrincipalPointY());
 
+  // Amount of far points to be removed from the point correspondences
+  const double outliers = 0.1;
   // Use 2D-3D correspondences for optimization.
   const Image& image = reconstruction.Image(image_id);
-  const size_t kNumSamples = image.NumPoints3D();
-  std::vector<Eigen::Vector2d> points2D(kNumSamples);
-  std::vector<Eigen::Vector3d> points3D(kNumSamples);
+  std::vector<std::tuple<Eigen::Vector2d, Eigen::Vector3d>> correspondences;
 
   std::ofstream distance_file;
   std::stringstream distance_file_name;
@@ -888,31 +888,32 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
   error_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_reproj_error";
   error_file.open(error_file_name.str());
 
-  LOG(INFO) << "Finding best fit from " << kNumSamples << " 2D-3D correspondences";
   size_t i = 0;
   for (const struct Point2D& point2D : image.Points2D()) {
-    // struct Point2D point2D;
-    if (point2D.HasPoint3D()) {
-      if (i >= kNumSamples) {
-        LOG(WARNING) << "Incorrect number of 2D-3D-Correspondences allocated."
-          << "Reached i=" << i << " for expected k=" << kNumSamples << " correspondences";
-        break;
-      }
-      points2D[i] = point2D.xy;
-      points3D[i] = reconstruction.Point3D(point2D.point3D_id).xyz;
-      depth_file << points3D[i][2] << std::endl;
-      distance_file << sqrt(pow(points3D[i][0], 2) + pow(points3D[i][1], 2) + pow(points3D[i][2], 2)) << std::endl;
+    if (point2D.HasPoint3D() && reconstruction.Point3D(point2D.point3D_id).xyz[2] >= 0) {
+      correspondences.push_back(std::make_tuple(
+        point2D.xy,
+        reconstruction.Point3D(point2D.point3D_id).xyz
+      ));
       i++;
     }
   }
-  distance_file.close();
-  depth_file.close();
 
-  if (i < kNumSamples) {
-    LOG(WARNING) << "Incorrect number of 2D-3D-Correspondences allocated."
-      << "Found " << i-1 << " for expected k=" << kNumSamples << " correspondences";
+  std::sort(correspondences.begin(), correspondences.end(), [](std::tuple<Eigen::Vector2d, Eigen::Vector3d> c1, std::tuple<Eigen::Vector2d, Eigen::Vector3d> c2) -> bool {
+    return std::sqrt(std::pow(std::get<1>(c1)[0], 2) + std::pow(std::get<1>(c1)[1], 2) + std::pow(std::get<1>(c1)[2], 2)) < std::sqrt(std::pow(std::get<1>(c2)[0], 2) + std::pow(std::get<1>(c2)[1], 2) + std::pow(std::get<1>(c2)[2], 2));
+  });
+
+  correspondences = std::vector(correspondences.begin() + (size_t)((outliers / 2) * correspondences.size()), correspondences.end() - (size_t)((outliers / 2) * correspondences.size()));
+  for (auto correspondence : correspondences) {
+    depth_file << std::get<1>(correspondence)[2] << std::endl;
+    distance_file << std::sqrt(std::pow(std::get<1>(correspondence)[0], 2) + std::pow(std::get<1>(correspondence)[1], 2) + std::pow(std::get<1>(correspondence)[2], 2)) << std::endl;
   }
+  depth_file.close();
+  distance_file.close();
+
   const Rigid3d cam_from_world = image.CamFromWorld();
+  const size_t kNumSamples = correspondences.size();
+  LOG(INFO) << "Finding best fit from " << kNumSamples << " 2D-3D correspondences";
 
   ceres::Problem problem;
   ceres::Solver::Summary summary;
@@ -924,8 +925,8 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
   double* camera_params = tgt_camera.params.data();
 
   for (size_t i = 0; i < kNumSamples; i++) {
-    const Eigen::Vector2d& point2D = points2D[i];
-    Eigen::Vector3d& point3D = points3D[i];
+    const Eigen::Vector2d& point2D = std::get<0>(correspondences[i]);
+    Eigen::Vector3d& point3D = std::get<1>(correspondences[i]);
 
     ceres::CostFunction* cost_function = nullptr;
     switch (tgt_camera.model_id) {
@@ -961,7 +962,7 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
     double reproj_error_sum = 0.0;
     for (size_t i = 0; i < kNumSamples; i++) {
       const double squared_reproj_error = CalculateSquaredReprojectionError(
-          points2D[i], points3D[i], cam_from_world, tgt_camera, false);
+          std::get<0>(correspondences[i]), std::get<1>(correspondences[i]), cam_from_world, tgt_camera, false);
       reproj_error_sum += std::sqrt(squared_reproj_error);
       error_file << std::sqrt(squared_reproj_error) << std::endl;
     }
