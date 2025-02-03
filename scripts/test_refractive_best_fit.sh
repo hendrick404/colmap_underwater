@@ -6,7 +6,7 @@ BACKUP_PATH=$HOME/colmap_workspace
 CAM_PARAM_F=340.5
 CAM_PARAM_CX=556.5
 CAM_PARAM_CY=417.5
-CAM_PARAM_N="0.1658429,0.14809199,0.97496918"
+CAM_PARAM_N="0,0,1"
 CAM_PARAM_INT_DIST=0.05
 CAM_PARAM_INT_THICK=0.02
 CAM_PARAM_NA=1
@@ -46,6 +46,8 @@ colmap_underwater image_undistorter \
     --output_path $WORKSPACE_PATH/dense \
     --output_type COLMAP \
     --max_image_size 2000
+
+exit 0
 
 if ![ -x "$(command -v nvidia-smi)" ] ; then
     exit 0

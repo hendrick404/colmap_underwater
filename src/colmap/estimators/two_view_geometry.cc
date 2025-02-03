@@ -46,6 +46,8 @@
 #include "colmap/scene/camera.h"
 #include "colmap/scene/projection.h"
 
+#include <cmath>
+#include <fstream>
 #include <unordered_set>
 
 namespace colmap {
@@ -873,6 +875,19 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
   std::vector<Eigen::Vector2d> points2D(kNumSamples);
   std::vector<Eigen::Vector3d> points3D(kNumSamples);
 
+  std::ofstream distance_file;
+  std::stringstream distance_file_name;
+  distance_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_distances";
+  distance_file.open(distance_file_name.str());
+  std::ofstream depth_file;
+  std::stringstream depth_file_name;
+  depth_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_depths";
+  depth_file.open(depth_file_name.str());
+  std::ofstream error_file;
+  std::stringstream error_file_name;
+  error_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_reproj_error";
+  error_file.open(error_file_name.str());
+
   LOG(INFO) << "Finding best fit from " << kNumSamples << " 2D-3D correspondences";
   size_t i = 0;
   for (const struct Point2D& point2D : image.Points2D()) {
@@ -885,9 +900,14 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
       }
       points2D[i] = point2D.xy;
       points3D[i] = reconstruction.Point3D(point2D.point3D_id).xyz;
+      depth_file << points3D[i][2] << std::endl;
+      distance_file << sqrt(pow(points3D[i][0], 2) + pow(points3D[i][1], 2) + pow(points3D[i][2], 2)) << std::endl;
       i++;
     }
   }
+  distance_file.close();
+  depth_file.close();
+
   if (i < kNumSamples) {
     LOG(WARNING) << "Incorrect number of 2D-3D-Correspondences allocated."
       << "Found " << i-1 << " for expected k=" << kNumSamples << " correspondences";
@@ -943,7 +963,9 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
       const double squared_reproj_error = CalculateSquaredReprojectionError(
           points2D[i], points3D[i], cam_from_world, tgt_camera, false);
       reproj_error_sum += std::sqrt(squared_reproj_error);
+      error_file << std::sqrt(squared_reproj_error) << std::endl;
     }
+    error_file.close();
     reproj_error_sum = reproj_error_sum / static_cast<double>(kNumSamples);
     LOG(INFO) << "Best fit parameters for model " << tgt_camera.ModelName()
               << " computed, aveBestFirage residual: " << reproj_error_sum
