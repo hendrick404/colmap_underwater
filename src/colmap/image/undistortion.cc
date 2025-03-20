@@ -971,14 +971,9 @@ void UndistortImage(const UndistortCameraOptions& options,
   const Camera& non_refractive_distorted_camera = (
     distorted_camera.IsCameraRefractive() ? (
       reconstruction != NULL ? (
-        BestFitNonRefracCameraFromSparse(
-          CameraModelId::kOpenCV,
-          distorted_camera,
-          *reconstruction,
-          image_id
-        )
+        BestFitNonRefracCameraDecenterFromSparse(CameraModelId::kFullOpenCV, distorted_camera, *reconstruction, image_id)
       ) : (
-        BestFitNonRefracCameraRange(CameraModelId::kOpenCV, distorted_camera, 0.2, 0.4)
+        BestFitNonRefracCameraDecenter(CameraModelId::kFullOpenCV, distorted_camera, 0.4)
       )
     ) : distorted_camera
   );

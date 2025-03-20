@@ -856,7 +856,7 @@ bool RefineRefractiveTwoViewGeometry(
   return summary.IsSolutionUsable();
 }
 
-Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const Camera& camera, const Reconstruction& reconstruction, image_t image_id) {
+Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id, const Camera& camera, const Reconstruction& reconstruction, image_t image_id) {
   CHECK(camera.IsCameraRefractive())
       << "Camera is not refractive, cannot compute the best approximated "
          "non-refractive camera";
@@ -889,28 +889,275 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
   error_file.open(error_file_name.str());
 
   LOG(INFO) << "Finding best fit from " << kNumSamples << " 2D-3D correspondences";
+
+  double sum_distances = 0;
+  int num_distances = 0;
   size_t i = 0;
   for (const struct Point2D& point2D : image.Points2D()) {
     // struct Point2D point2D;
     if (point2D.HasPoint3D()) {
       if (i >= kNumSamples) {
         LOG(WARNING) << "Incorrect number of 2D-3D-Correspondences allocated."
-          << "Reached i=" << i << " for expected k=" << kNumSamples << " correspondences";
+                     << "Reached i=" << i << " for expected k=" << kNumSamples
+                     << " correspondences";
+        break;
+      }
+      points2D[i] = point2D.xy;
+      points3D[i] = reconstruction.Image(image_id).CamFromWorld() * reconstruction.Point3D(point2D.point3D_id).xyz;
+      depth_file << points3D[i][2] << std::endl;
+      double distance = sqrt(pow(points3D[i][0], 2) + pow(points3D[i][1], 2) +
+                             pow(points3D[i][2], 2));
+      sum_distances += distance;
+      num_distances++;
+      distance_file << distance << std::endl;
+      i++;
+    }
+  }
+  distance_file.close();
+  depth_file.close();
+  double approx_depth = sum_distances / num_distances;
+  if (kNumSamples <= 100) {
+    LOG(WARNING) << "Found only " << kNumSamples <<  " samples, " << 100 << " are required" << std::endl;
+    return camera;
+  }
+
+  ceres::Problem problem;
+  ceres::Solver::Summary summary;
+  ceres::Solver::Options solver_options;
+  solver_options.max_num_iterations = 100;
+  solver_options.function_tolerance *= 1e-4;
+  solver_options.gradient_tolerance *= 1e-4;
+
+  double cam_from_world_rotation[4] = {1, 0, 0, 0};
+  double cam_from_world_translation[3] = {0, 0, 0};
+  double* camera_params = tgt_camera.params.data();
+
+  for (size_t i = 0; i < kNumSamples; i++) {
+    const Eigen::Vector2d& point2D = points2D[i];
+    Eigen::Vector3d& point3D = points3D[i];
+
+    ceres::CostFunction* cost_function = nullptr;
+    switch (tgt_camera.model_id) {
+      #define CAMERA_MODEL_CASE(CameraModel)                                                            \
+      case CameraModel::model_id:                                                                       \
+        cost_function = ReprojErrorConstantPoint3DCostFunction<CameraModel>::Create(point2D, point3D);  \
+        break;
+
+        CAMERA_MODEL_SWITCH_CASES
+
+        #undef CAMERA_MODEL_CASE
+      }
+
+    problem.AddResidualBlock(
+        cost_function, nullptr, cam_from_world_rotation, cam_from_world_translation, camera_params);
+    // problem.SetParameterLowerBound(camera_params, 0, 0);
+    // problem.SetParameterLowerBound(camera_params, 1, 0);
+    problem.SetParameterUpperBound(cam_from_world_translation, 2, -0.1 * approx_depth);
+    problem.SetParameterUpperBound(cam_from_world_translation, 2, 0.1 * approx_depth);
+    for (int i = 4; i < tgt_camera.params.size(); i++) {
+      problem.SetParameterLowerBound(camera_params, i, -0.1);
+      problem.SetParameterUpperBound(camera_params, i, 0.1);
+    }
+    // problem.SetParameterBlockConstant(cam_from_world_translation);
+    problem.SetParameterBlockConstant(cam_from_world_rotation);
+  }
+
+  solver_options.minimizer_progress_to_stdout = false;
+  ceres::Solve(solver_options, &problem, &summary);
+
+  // if optimization failed, use the original parameters
+  if (!summary.IsSolutionUsable() ||
+      summary.termination_type == ceres::TerminationType::NO_CONVERGENCE) {
+    LOG(WARNING) << "Failed to compute the best fit persepctive model, taking "
+                    "the original intrinsic parameters";
+    tgt_camera.model_id = camera.model_id;
+    tgt_camera.params = camera.params;
+  } else {
+    // Check for residuals.
+    double reproj_error_sum = 0.0;
+    Rigid3d pose = Rigid3d(Eigen::Quaterniond::Identity(), Eigen::Vector3d(cam_from_world_translation));
+    for (size_t i = 0; i < kNumSamples; i++) {
+      const double squared_reproj_error = CalculateSquaredReprojectionError(
+          points2D[i], points3D[i], pose, tgt_camera, false);
+      reproj_error_sum += std::sqrt(squared_reproj_error);
+    }
+    reproj_error_sum = reproj_error_sum / static_cast<double>(kNumSamples);
+    LOG(INFO) << "Best fit parameters for model " << tgt_camera.ModelName()
+              << " computed, aveBestFirage residual: " << reproj_error_sum
+              << ", translation " << cam_from_world_translation[0] << ", "  << cam_from_world_translation[1] << ", "  << cam_from_world_translation[2]
+              << ", camera parameters: " << tgt_camera.ParamsToString()
+              << std::endl;
+  }
+  return tgt_camera;
+}
+
+Camera BestFitNonRefracCameraDecenter(const CameraModelId tgt_model_id,
+                                           const Camera& camera,
+                                           const double approx_depth) {
+  CHECK(camera.IsCameraRefractive())
+      << "Camera is not refractive, cannot compute the best approximated "
+         "non-refractive camera";
+
+  Camera tgt_camera = Camera::CreateFromModelId(camera.camera_id,
+                                                tgt_model_id,
+                                                camera.MeanFocalLength(),
+                                                camera.width,
+                                                camera.height);
+  tgt_camera.SetPrincipalPointX(camera.PrincipalPointX());
+  tgt_camera.SetPrincipalPointY(camera.PrincipalPointY());
+
+  // Sample 2D-3D correspondences for optimization.
+  const size_t kNumSamples = 1000;
+  std::vector<Eigen::Vector2d> points2D(kNumSamples);
+  std::vector<Eigen::Vector3d> points3D(kNumSamples);
+  const double width = static_cast<double>(tgt_camera.width);
+  const double height = static_cast<double>(tgt_camera.height);
+
+  for (size_t i = 0; i < kNumSamples; ++i) {
+    Eigen::Vector2d image_point(RandomUniformReal(0.5, width - 0.5),
+                                RandomUniformReal(0.5, height - 0.5));
+    Eigen::Vector3d world_point = camera.CamFromImgRefracPoint(image_point, approx_depth);
+    points2D[i] = image_point;
+    points3D[i] = world_point;
+  }
+
+  ceres::Problem problem;
+  ceres::Solver::Summary summary;
+  ceres::Solver::Options solver_options;
+  solver_options.max_num_iterations = 100;
+  solver_options.function_tolerance *= 1e-4;
+  solver_options.gradient_tolerance *= 1e-4;
+
+  double cam_from_world_rotation[4] = {1, 0, 0, 0};
+  double cam_from_world_translation[3] = {0, 0, 0};
+  double* camera_params = tgt_camera.params.data();
+
+  for (size_t i = 0; i < kNumSamples; i++) {
+    const Eigen::Vector2d& point2D = points2D[i];
+    Eigen::Vector3d& point3D = points3D[i];
+
+    ceres::CostFunction* cost_function = nullptr;
+    switch (tgt_camera.model_id) {
+      #define CAMERA_MODEL_CASE(CameraModel)                                                            \
+      case CameraModel::model_id:                                                                       \
+        cost_function = ReprojErrorConstantPoint3DCostFunction<CameraModel>::Create(point2D, point3D);  \
+        break;
+
+        CAMERA_MODEL_SWITCH_CASES
+
+        #undef CAMERA_MODEL_CASE
+      }
+
+    problem.AddResidualBlock(
+        cost_function, nullptr, cam_from_world_rotation, cam_from_world_translation, camera_params);
+    problem.SetParameterLowerBound(camera_params, 0, 0);
+    problem.SetParameterLowerBound(camera_params, 1, 0);
+    problem.SetParameterUpperBound(cam_from_world_translation, 2, - 0.1 * approx_depth);
+    problem.SetParameterUpperBound(cam_from_world_translation, 2, 0.1 * approx_depth);
+    problem.SetParameterBlockConstant(cam_from_world_rotation);
+  }
+
+  solver_options.minimizer_progress_to_stdout = false;
+  ceres::Solve(solver_options, &problem, &summary);
+
+  // if optimization failed, use the original parameters
+  if (!summary.IsSolutionUsable() ||
+      summary.termination_type == ceres::TerminationType::NO_CONVERGENCE) {
+    LOG(WARNING) << "Failed to compute the best fit persepctive model, taking "
+                    "the original intrinsic parameters";
+    tgt_camera.model_id = camera.model_id;
+    tgt_camera.params = camera.params;
+  } else {
+    // Check for residuals.
+    double reproj_error_sum = 0.0;
+    Rigid3d pose = Rigid3d(Eigen::Quaterniond::Identity(), Eigen::Vector3d(cam_from_world_translation));
+    for (size_t i = 0; i < kNumSamples; i++) {
+      const double squared_reproj_error = CalculateSquaredReprojectionError(
+          points2D[i], points3D[i], pose, tgt_camera, false);
+      reproj_error_sum += std::sqrt(squared_reproj_error);
+    }
+    reproj_error_sum = reproj_error_sum / static_cast<double>(kNumSamples);
+    LOG(INFO) << "Best fit parameters for model " << tgt_camera.ModelName()
+              << " in distance " << approx_depth
+              << " computed, aveBestFirage residual: " << reproj_error_sum
+              << ", translation " << cam_from_world_translation[0] << ", "  << cam_from_world_translation[1] << ", "  << cam_from_world_translation[2]
+              << ", camera parameters: " << tgt_camera.ParamsToString()
+              << std::endl;
+  }
+  return tgt_camera;
+}
+
+Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id,
+                                        const Camera& camera,
+                                        const Reconstruction& reconstruction,
+                                        image_t image_id) {
+  CHECK(camera.IsCameraRefractive())
+      << "Camera is not refractive, cannot compute the best approximated "
+         "non-refractive camera";
+
+  Camera tgt_camera = Camera::CreateFromModelId(camera.camera_id,
+                                                tgt_model_id,
+                                                camera.MeanFocalLength(),
+                                                camera.width,
+                                                camera.height);
+  tgt_camera.SetPrincipalPointX(camera.PrincipalPointX());
+  tgt_camera.SetPrincipalPointY(camera.PrincipalPointY());
+
+  // Use 2D-3D correspondences for optimization.
+  const Image& image = reconstruction.Image(image_id);
+  const size_t kNumSamples = image.NumPoints3D();
+  std::vector<Eigen::Vector2d> points2D(kNumSamples);
+  std::vector<Eigen::Vector3d> points3D(kNumSamples);
+
+  std::ofstream distance_file;
+  std::stringstream distance_file_name;
+  distance_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_distances";
+  distance_file.open(distance_file_name.str());
+  std::ofstream depth_file;
+  std::stringstream depth_file_name;
+  depth_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_depths";
+  depth_file.open(depth_file_name.str());
+  std::ofstream error_file;
+  std::stringstream error_file_name;
+  error_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_reproj_error";
+  error_file.open(error_file_name.str());
+
+  LOG(INFO) << "Finding best fit from " << kNumSamples << " 2D-3D correspondences";
+  double sum_distances = 0;
+  int num_distances = 0;
+  size_t i = 0;
+  for (const struct Point2D& point2D : image.Points2D()) {
+    // struct Point2D point2D;
+    if (point2D.HasPoint3D()) {
+      if (i >= kNumSamples) {
+        LOG(WARNING) << "Incorrect number of 2D-3D-Correspondences allocated."
+                     << "Reached i=" << i << " for expected k=" << kNumSamples << " correspondences";
         break;
       }
       points2D[i] = point2D.xy;
       points3D[i] = reconstruction.Point3D(point2D.point3D_id).xyz;
       depth_file << points3D[i][2] << std::endl;
-      distance_file << sqrt(pow(points3D[i][0], 2) + pow(points3D[i][1], 2) + pow(points3D[i][2], 2)) << std::endl;
+      double distance = sqrt(pow(points3D[i][0], 2) + pow(points3D[i][1], 2) + pow(points3D[i][2], 2));
+      distance_file << distance << std::endl;
+      sum_distances += distance;
+      num_distances++;
       i++;
     }
   }
   distance_file.close();
   depth_file.close();
 
+  if (num_distances > 0) {
+    double avg_distance = sum_distances / num_distances;
+    return BestFitNonRefracCamera(tgt_model_id, camera, avg_distance);
+  } else {
+    return camera;
+  }
+
   if (i < kNumSamples) {
     LOG(WARNING) << "Incorrect number of 2D-3D-Correspondences allocated."
-      << "Found " << i-1 << " for expected k=" << kNumSamples << " correspondences";
+                 << "Found " << i - 1 << " for expected k=" << kNumSamples
+                 << " correspondences";
   }
   const Rigid3d cam_from_world = image.CamFromWorld();
 
@@ -939,7 +1186,6 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
 
 #undef CAMERA_MODEL_CASE
     }
-
     problem.AddResidualBlock(
         cost_function, nullptr, point3D.data(), camera_params);
 
@@ -970,19 +1216,15 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
     LOG(INFO) << "Best fit parameters for model " << tgt_camera.ModelName()
               << " computed, aveBestFirage residual: " << reproj_error_sum
               << std::endl;
+    LOG(INFO) << "Camera parameters " << tgt_camera.ParamsToString()
+              << std::endl;
   }
   return tgt_camera;
 }
 
-Camera BestFitNonRefracCamera(const CameraModelId tgt_model_id,const Camera& camera,
-                              const double approx_depth) {
-  return BestFitNonRefracCameraRange(tgt_model_id, camera, approx_depth, -1);
-}
-
-Camera BestFitNonRefracCameraRange(const CameraModelId tgt_model_id,
+Camera BestFitNonRefracCamera(const CameraModelId tgt_model_id,
                               const Camera& camera,
-                              const double min_depth,
-                              const double max_depth) {
+                              const double approx_depth) {
   CHECK(camera.IsCameraRefractive())
       << "Camera is not refractive, cannot compute the best approximated "
          "non-refractive camera";
@@ -1005,8 +1247,9 @@ Camera BestFitNonRefracCameraRange(const CameraModelId tgt_model_id,
   for (size_t i = 0; i < kNumSamples; ++i) {
     Eigen::Vector2d image_point(RandomUniformReal(0.5, width - 0.5),
                                 RandomUniformReal(0.5, height - 0.5));
-    Eigen::Vector3d world_point =
-        camera.CamFromImgRefracPoint(image_point, (max_depth< min_depth ? RandomUniformReal(min_depth, max_depth) : min_depth));
+    Eigen::Vector3d world_point = camera.CamFromImgRefracPoint(
+        image_point,
+        approx_depth);
     points2D[i] = image_point;
     points3D[i] = world_point;
   }
@@ -1065,7 +1308,7 @@ Camera BestFitNonRefracCameraRange(const CameraModelId tgt_model_id,
     }
     reproj_error_sum = reproj_error_sum / static_cast<double>(kNumSamples);
     LOG(INFO) << "Best fit parameters for model " << tgt_camera.ModelName()
-              << " in distance " << min_depth << " to " << max_depth
+              << " in distance " << approx_depth
               << " computed, aveBestFirage residual: " << reproj_error_sum
               << std::endl;
   }

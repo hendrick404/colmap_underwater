@@ -194,6 +194,24 @@ bool RefineRefractiveTwoViewGeometry(
 // This approximation can only work for a certain scene
 // distance. The target scene depth is approximated from the sparse
 // reconstruction.
+Camera BestFitNonRefracCameraDecenterFromSparse(CameraModelId tgt_model_id,
+    const Camera& camera,
+    const Reconstruction& reconstruction,
+    image_t image_id);
+
+// Compute a best approximated non-refractive camera model of the current
+// refractive camera. This approximation can only work for a certain scene
+// distance, the user should input the target scene depth to approximate.
+Camera BestFitNonRefracCameraDecenter(CameraModelId tgt_model_id,
+const Camera& camera,
+double approx_depth);
+
+// Compute a best approximated non-refractive camera model of the current
+// refractive camera.
+//
+// This approximation can only work for a certain scene
+// distance. The target scene depth is approximated from the sparse
+// reconstruction.
 Camera BestFitNonRefracCameraFromSparse(CameraModelId tgt_model_id,
                                         const Camera& camera,
                                         const Reconstruction& reconstruction,
