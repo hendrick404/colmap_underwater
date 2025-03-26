@@ -974,6 +974,84 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id, const 
   return tgt_camera;
 }
 
+Camera BestFitNonRefracCameraFromPoints(CameraModelId tgt_model_id,
+                                        const Camera& camera,
+                                        std::vector<std::tuple<Eigen::Vector2d,
+                                        Eigen::Vector3d>> point_pairs) {
+  CHECK(camera.IsCameraRefractive())
+      << "Camera is not refractive, cannot compute the best approximated "
+         "non-refractive camera";
+
+  Camera tgt_camera = Camera::CreateFromModelId(camera.camera_id,
+                                                tgt_model_id,
+                                                camera.MeanFocalLength(),
+                                                camera.width,
+                                                camera.height);
+  tgt_camera.SetPrincipalPointX(camera.PrincipalPointX());
+  tgt_camera.SetPrincipalPointY(camera.PrincipalPointY());
+
+  LOG(INFO) << "Finding best fit from " << point_pairs.size() << " 2D-3D correspondences";
+
+  const Rigid3d identity = Rigid3d();
+
+  ceres::Problem problem;
+  ceres::Solver::Summary summary;
+  ceres::Solver::Options solver_options;
+  solver_options.max_num_iterations = 100;
+  solver_options.function_tolerance *= 1e-4;
+  solver_options.gradient_tolerance *= 1e-4;
+
+  double* camera_params = tgt_camera.params.data();
+
+  for (size_t i = 0; i < point_pairs.size(); i++) {
+    const Eigen::Vector2d& point2D = std::get<0>(point_pairs[i]);
+    Eigen::Vector3d& point3D = std::get<1>(point_pairs[i]);
+
+    ceres::CostFunction* cost_function = nullptr;
+    switch (tgt_camera.model_id) {
+#define CAMERA_MODEL_CASE(CameraModel)                                        \
+  case CameraModel::model_id:                                                 \
+    cost_function = ReprojErrorConstantPoseCostFunction<CameraModel>::Create( \
+        identity, point2D);                                              \
+    break;
+
+      CAMERA_MODEL_SWITCH_CASES
+
+#undef CAMERA_MODEL_CASE
+    }
+
+    problem.AddResidualBlock(
+        cost_function, nullptr, point3D.data(), camera_params);
+
+    problem.SetParameterBlockConstant(point3D.data());
+  }
+
+  solver_options.minimizer_progress_to_stdout = false;
+  ceres::Solve(solver_options, &problem, &summary);
+
+  // if optimization failed, use the original parameters
+  if (!summary.IsSolutionUsable() ||
+      summary.termination_type == ceres::TerminationType::NO_CONVERGENCE) {
+    LOG(WARNING) << "Failed to compute the best fit persepctive model, taking "
+                    "the original intrinsic parameters";
+    tgt_camera.model_id = camera.model_id;
+    tgt_camera.params = camera.params;
+  } else {
+    // Check for residuals.
+    double reproj_error_sum = 0.0;
+    for (size_t i = 0; i < point_pairs.size(); i++) {
+      const double squared_reproj_error = CalculateSquaredReprojectionError(
+        std::get<0>(point_pairs[i]), std::get<1>(point_pairs[i]), identity, tgt_camera, false);
+      reproj_error_sum += std::sqrt(squared_reproj_error);
+    }
+    reproj_error_sum = reproj_error_sum / static_cast<double>(point_pairs.size());
+    LOG(INFO) << "Best fit parameters for model " << tgt_camera.ModelName()
+              << " computed, aveBestFirage residual: " << reproj_error_sum
+              << std::endl;
+  }
+  return tgt_camera;
+}
+
 Camera BestFitNonRefracCamera(const CameraModelId tgt_model_id,const Camera& camera,
                               const double approx_depth) {
   return BestFitNonRefracCameraRange(tgt_model_id, camera, approx_depth, -1);

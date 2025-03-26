@@ -206,7 +206,7 @@ void UndistortImage(const UndistortCameraOptions& options,
                     const Camera& distorted_camera,
                     Bitmap* undistorted_image,
                     Camera* undistorted_camera,
-                    const Reconstruction* reconstruction,
+                    const Reconstruction& reconstruction,
                     image_t image_id);
 
 // Undistort image such that the viewing geometry of the undistorted image

@@ -31,6 +31,7 @@
 
 #include "colmap/estimators/two_view_geometry.h"
 #include "colmap/geometry/pose.h"
+#include "colmap/image/refractive_undistortion.h"
 #include "colmap/image/warp.h"
 #include "colmap/sensor/models.h"
 #include "colmap/util/misc.h"
@@ -269,7 +270,7 @@ bool COLMAPUndistorter::Undistort(const image_t image_id) const {
                  camera,
                  &undistorted_bitmap,
                  &undistorted_camera,
-                 &reconstruction_,
+                 reconstruction_,
                  image_id);
   return undistorted_bitmap.Write(output_image_path);
 }
@@ -393,7 +394,7 @@ bool PMVSUndistorter::Undistort(const size_t reg_image_idx) const {
                  camera,
                  &undistorted_bitmap,
                  &undistorted_camera,
-                 &reconstruction_,
+                 reconstruction_,
                  image_id);
 
   WriteProjectionMatrix(proj_matrix_path, undistorted_camera, image, "CONTOUR");
@@ -602,7 +603,7 @@ bool CMPMVSUndistorter::Undistort(const size_t reg_image_idx) const {
                  camera,
                  &undistorted_bitmap,
                  &undistorted_camera,
-                 &reconstruction_,
+                 reconstruction_,
                  image_id);
 
   WriteProjectionMatrix(proj_matrix_path, undistorted_camera, image, "CONTOUR");
@@ -955,7 +956,7 @@ void UndistortImage(const UndistortCameraOptions& options,
                     const Camera& distorted_camera,
                     Bitmap* undistorted_image,
                     Camera* undistorted_camera) {
-  UndistortImage(options, distorted_image, distorted_camera, undistorted_image, undistorted_camera, NULL, kInvalidImageId);
+  UndistortImage(options, distorted_image, distorted_camera, undistorted_image, undistorted_camera, Reconstruction(), kInvalidImageId);
 }
 
 void UndistortImage(const UndistortCameraOptions& options,
@@ -963,18 +964,18 @@ void UndistortImage(const UndistortCameraOptions& options,
                     const Camera& distorted_camera,
                     Bitmap* undistorted_bitmap,
                     Camera* undistorted_camera,
-                    const Reconstruction* reconstruction,
+                    const Reconstruction& reconstruction,
                     image_t image_id) {
   CHECK_EQ(distorted_camera.width, distorted_bitmap.Width());
   CHECK_EQ(distorted_camera.height, distorted_bitmap.Height());
 
   const Camera& non_refractive_distorted_camera = (
     distorted_camera.IsCameraRefractive() ? (
-      reconstruction != NULL ? (
+      image_id != kInvalidImageId ? (
         BestFitNonRefracCameraFromSparse(
           CameraModelId::kOpenCV,
           distorted_camera,
-          *reconstruction,
+          reconstruction,
           image_id
         )
       ) : (
@@ -983,6 +984,7 @@ void UndistortImage(const UndistortCameraOptions& options,
     ) : distorted_camera
   );
 
+  CameraQuadTree non_refractive_distorted_camera_quad_tree = BestFitNonRefracCameraQuadTree(CameraModelId::kOpenCV, distorted_camera, reconstruction, image_id);
   *undistorted_camera = UndistortCamera(options, non_refractive_distorted_camera);
 
   undistorted_bitmap->Allocate(static_cast<int>(undistorted_camera->width),

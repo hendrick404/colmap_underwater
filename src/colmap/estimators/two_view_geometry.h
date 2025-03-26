@@ -188,6 +188,11 @@ bool RefineRefractiveTwoViewGeometry(
     const std::vector<Rigid3d>& inlier_virtual_from_reals2,
     Rigid3d* rig2_from_rig1);
 
+Camera BestFitNonRefracCameraFromPoints(CameraModelId tgt_model_id,
+                                        const Camera& camera,
+                                        std::vector<std::tuple<Eigen::Vector2d,
+                                        Eigen::Vector3d>> point_pairs);
+
 // Compute a best approximated non-refractive camera model of the current
 // refractive camera.
 //

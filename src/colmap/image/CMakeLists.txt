@@ -34,6 +34,7 @@ COLMAP_ADD_LIBRARY(
     NAME colmap_image
     SRCS
         line.h line.cc
+        refractive_undistortion.h refractive_undistortion.cc
         undistortion.h undistortion.cc
         warp.h warp.cc
     PUBLIC_LINK_LIBS
