@@ -1006,7 +1006,7 @@ Camera BestFitNonRefracCameraRange(const CameraModelId tgt_model_id,
     Eigen::Vector2d image_point(RandomUniformReal(0.5, width - 0.5),
                                 RandomUniformReal(0.5, height - 0.5));
     Eigen::Vector3d world_point =
-        camera.CamFromImgRefracPoint(image_point, (max_depth< min_depth ? RandomUniformReal(min_depth, max_depth) : min_depth));
+        camera.CamFromImgRefracPoint(image_point, (max_depth > min_depth ? RandomUniformReal(min_depth, max_depth) : min_depth));
     points2D[i] = image_point;
     points3D[i] = world_point;
   }
