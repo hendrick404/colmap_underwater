@@ -209,8 +209,40 @@ std::vector<std::tuple<double, Camera>> InterpolateCameras(
   return cameras;
 }
 
-void WarpBetweenCameras(const CameraQuadTree& source_camera,
+void WarpBetweenCameras(const CameraQuadTree& source_cameras,
                         const Camera& target_camera,
                         const Bitmap& source_image,
-                        Bitmap* target_image);
+                        Bitmap* target_image) {
+  // TODO: Implement checks correctly
+  // CHECK_EQ(source_camera.width, source_image.Width());
+  // CHECK_EQ(source_camera.height, source_image.Height());
+  const size_t source_width = source_image.Width();
+  const size_t source_height = source_image.Height();
+  CHECK_NOTNULL(target_image);
+  target_image->Allocate(static_cast<int>(source_width),
+                         static_cast<int>(source_height),
+                         source_image.IsRGB());
+
+  // To avoid aliasing, perform the warping in the source resolution and
+  // then rescale the image at the end.
+  Camera scaled_target_camera = target_camera;
+  if (target_camera.width != source_width ||
+      target_camera.height != source_height) {
+    scaled_target_camera.Rescale(source_width, source_height);
+  }
+
+  Eigen::Vector2d image_point;
+  for (int y = 0; y < target_image->Height(); ++y) {
+    image_point.y() = y + 0.5;
+    for (int x = 0; x < target_image->Width(); ++x) {
+      image_point.x() = x + 0.5;
+      auto interpolated_cameras = InterpolateCameras(
+          source_cameras,
+          image_point,
+          ImageWindow(0, target_image->Height(), 0, target_image->Width()));
+      for (auto weighted_Camera : interpolated_cameras) {
+      }
+    }
+  }
+}
 }  // namespace colmap
