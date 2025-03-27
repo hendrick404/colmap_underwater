@@ -11,10 +11,10 @@
 
 namespace colmap {
 
-CameraQuadTreeNode::CameraQuadTreeNode(CameraQuadTree& top_left,
-                                       CameraQuadTree& top_right,
-                                       CameraQuadTree& bottom_left,
-                                       CameraQuadTree& bottom_right)
+CameraQuadTreeNode::CameraQuadTreeNode(const CameraQuadTree& top_left,
+                                       const CameraQuadTree& top_right,
+                                       const CameraQuadTree& bottom_left,
+                                       const CameraQuadTree& bottom_right)
     : top_left(top_left),
       top_right(top_right),
       bottom_left(bottom_left),

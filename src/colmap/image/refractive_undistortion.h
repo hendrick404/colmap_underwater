@@ -32,21 +32,21 @@ typedef std::variant<CameraQuadTreeNode, CameraQuadTreeLeaf> CameraQuadTree;
 
 class CameraQuadTreeNode {
  public:
-  CameraQuadTreeNode(CameraQuadTree& top_left,
-                     CameraQuadTree& top_right,
-                     CameraQuadTree& bottom_left,
-                     CameraQuadTree& bottom_right);
+  CameraQuadTreeNode(const CameraQuadTree& top_left,
+                     const CameraQuadTree& top_right,
+                     const CameraQuadTree& bottom_left,
+                     const CameraQuadTree& bottom_right);
 
-  CameraQuadTree& TopLeft() { return top_left; }
-  CameraQuadTree& TopRight() { return top_right; }
-  CameraQuadTree& BottomLeft() { return bottom_left; }
-  CameraQuadTree& BottomRight() { return bottom_right; }
+  const CameraQuadTree& TopLeft() { return top_left; }
+  const CameraQuadTree& TopRight() { return top_right; }
+  const CameraQuadTree& BottomLeft() { return bottom_left; }
+  const CameraQuadTree& BottomRight() { return bottom_right; }
 
  private:
-  CameraQuadTree& top_left;
-  CameraQuadTree& top_right;
-  CameraQuadTree& bottom_left;
-  CameraQuadTree& bottom_right;
+  const CameraQuadTree& top_left;
+  const CameraQuadTree& top_right;
+  const CameraQuadTree& bottom_left;
+  const CameraQuadTree& bottom_right;
 };
 
 struct ImageWindow {
