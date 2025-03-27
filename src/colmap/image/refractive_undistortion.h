@@ -5,8 +5,10 @@
 #include "colmap/scene/reconstruction.h"
 #include "colmap/sensor/bitmap.h"
 
+#include <Eigen/Core>
 #include <variant>
 #include <vector>
+#include <tuple>
 
 namespace colmap {
 
@@ -69,9 +71,8 @@ CameraQuadTree BestFitNonRefracCameraQuadTree(
 
 std::vector<std::tuple<double, Camera>> InterpolateCameras(
     CameraQuadTree camera_quad_tree,
-    Point2D image_point,
-    int width,
-    int height);
+    Eigen::Vector2d image_point,
+    struct ImageWindow window);
 
 void WarpBetweenCameras(const CameraQuadTree& source_camera,
                         const Camera& target_camera,

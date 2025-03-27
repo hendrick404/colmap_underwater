@@ -44,11 +44,17 @@ COLMAP_ADD_LIBRARY(
         colmap_sensor
         colmap_scene
         colmap_lsd
+        colmap_estimators
 )
 
 COLMAP_ADD_TEST(
     NAME line_test
     SRCS line_test.cc
+    LINK_LIBS colmap_image
+)
+COLMAP_ADD_TEST(
+    NAME refractive_undistortion_test
+    SRCS refractive_undistortion_test.cc
     LINK_LIBS colmap_image
 )
 COLMAP_ADD_TEST(

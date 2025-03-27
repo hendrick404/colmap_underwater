@@ -34,12 +34,12 @@ project(COLMAP LANGUAGES C CXX)
 
 set(COLMAP_VERSION "3.10-dev")
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 14)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-set_property(GLOBAL PROPERTY GLOBAL_DEPENDS_NO_CYCLES ON)
+set_property(GLOBAL PROPERTY GLOBAL_DEPENDS_NO_CYCLES OFF)
 
 ################################################################################
 # Include CMake dependencies

@@ -984,7 +984,7 @@ void UndistortImage(const UndistortCameraOptions& options,
     ) : distorted_camera
   );
 
-  CameraQuadTree non_refractive_distorted_camera_quad_tree = BestFitNonRefracCameraQuadTree(CameraModelId::kOpenCV, distorted_camera, reconstruction, image_id);
+  // CameraQuadTree non_refractive_distorted_camera_quad_tree = BestFitNonRefracCameraQuadTree(CameraModelId::kOpenCV, distorted_camera, reconstruction, image_id);
   *undistorted_camera = UndistortCamera(options, non_refractive_distorted_camera);
 
   undistorted_bitmap->Allocate(static_cast<int>(undistorted_camera->width),

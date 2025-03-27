@@ -133,7 +133,7 @@ CameraQuadTree BestFitNonRefracCameraQuadTree(
 
 std::vector<std::tuple<double, Camera>> InterpolateCameras(
     CameraQuadTree camera_quad_tree,
-    Point2D image_point,
+    Eigen::Vector2d image_point,
     struct ImageWindow window) {
   if (std::holds_alternative<CameraQuadTreeLeaf>(camera_quad_tree)) {
     return {std::tuple<double, Camera>(
@@ -146,13 +146,13 @@ std::vector<std::tuple<double, Camera>> InterpolateCameras(
   const double bottom_center_y = 0.75 * window.height() + window.top;
 
   const double left_factor =
-      (right_center_x - image_point.xy[0]) / (right_center_x - left_center_x);
+      (right_center_x - image_point[0]) / (right_center_x - left_center_x);
   const double right_factor =
-      (image_point.xy[0] - left_center_x) / (right_center_x - left_center_x);
+      (image_point[0] - left_center_x) / (right_center_x - left_center_x);
   const double top_factor =
-      (bottom_center_y - image_point.xy[1]) / (bottom_center_y - top_center_y);
+      (bottom_center_y - image_point[1]) / (bottom_center_y - top_center_y);
   const double bottom_factor =
-      (image_point.xy[1] - top_center_y) / (bottom_center_y - top_center_y);
+      (image_point[1] - top_center_y) / (bottom_center_y - top_center_y);
 
   std::vector<std::tuple<double, Camera>> cameras =
       std::vector<std::tuple<double, Camera>>();
