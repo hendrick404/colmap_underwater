@@ -74,7 +74,7 @@ std::vector<std::tuple<double, Camera>> InterpolateCameras(
     Eigen::Vector2d image_point,
     struct ImageWindow window);
 
-void WarpBetweenCameras(const CameraQuadTree& source_camera,
+void WarpImageBetweenCameras(const CameraQuadTree& source_camera,
                         const Camera& target_camera,
                         const Bitmap& source_image,
                         Bitmap* target_image);

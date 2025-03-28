@@ -209,7 +209,7 @@ std::vector<std::tuple<double, Camera>> InterpolateCameras(
   return cameras;
 }
 
-void WarpBetweenCameras(const CameraQuadTree& source_cameras,
+void WarpImageBetweenCameras(const CameraQuadTree& source_cameras,
                         const Camera& target_camera,
                         const Bitmap& source_image,
                         Bitmap* target_image) {
@@ -240,9 +240,25 @@ void WarpBetweenCameras(const CameraQuadTree& source_cameras,
           source_cameras,
           image_point,
           ImageWindow(0, target_image->Height(), 0, target_image->Width()));
+      const Eigen::Vector2d cam_point = scaled_target_camera.CamFromImg(image_point);
+      Eigen::Vector2d source_point = {0, 0};
       for (auto weighted_Camera : interpolated_cameras) {
+        const Eigen::Vector2d current_source_point = std::get<1>(weighted_Camera).ImgFromCam(cam_point);
+        source_point.x() += current_source_point.x();
+        source_point.y() += current_source_point.y();
+      }
+      BitmapColor<float> color;
+      if (source_image.InterpolateBilinear(
+              source_point.x() - 0.5, source_point.y() - 0.5, &color)) {
+        target_image->SetPixel(x, y, color.Cast<uint8_t>());
+      } else {
+        target_image->SetPixel(x, y, BitmapColor<uint8_t>(0));
       }
     }
+  }
+  if (target_camera.width != source_width ||
+      target_camera.height != source_height) {
+    target_image->Rescale(target_camera.width, target_camera.height);
   }
 }
 }  // namespace colmap

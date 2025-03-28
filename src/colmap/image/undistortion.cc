@@ -969,30 +969,30 @@ void UndistortImage(const UndistortCameraOptions& options,
   CHECK_EQ(distorted_camera.width, distorted_bitmap.Width());
   CHECK_EQ(distorted_camera.height, distorted_bitmap.Height());
 
-  const Camera& non_refractive_distorted_camera = (
-    distorted_camera.IsCameraRefractive() ? (
-      image_id != kInvalidImageId ? (
-        BestFitNonRefracCameraFromSparse(
-          CameraModelId::kOpenCV,
-          distorted_camera,
-          reconstruction,
-          image_id
-        )
-      ) : (
-        BestFitNonRefracCameraRange(CameraModelId::kOpenCV, distorted_camera, 0.2, 0.4)
-      )
-    ) : distorted_camera
-  );
+  // const Camera& non_refractive_distorted_camera = (
+  //   distorted_camera.IsCameraRefractive() ? (
+  //     image_id != kInvalidImageId ? (
+  //       BestFitNonRefracCameraFromSparse(
+  //         CameraModelId::kOpenCV,
+  //         distorted_camera,
+  //         reconstruction,
+  //         image_id
+  //       )
+  //     ) : (
+  //       BestFitNonRefracCameraRange(CameraModelId::kOpenCV, distorted_camera, 0.2, 0.4)
+  //     )
+  //   ) : distorted_camera
+  // );
 
-  // CameraQuadTree non_refractive_distorted_camera_quad_tree = BestFitNonRefracCameraQuadTree(CameraModelId::kOpenCV, distorted_camera, reconstruction, image_id);
-  *undistorted_camera = UndistortCamera(options, non_refractive_distorted_camera);
+  CameraQuadTree non_refractive_distorted_camera_quad_tree = BestFitNonRefracCameraQuadTree(CameraModelId::kOpenCV, distorted_camera, reconstruction, image_id);
+  //*undistorted_camera = UndistortCamera(options, non_refractive_distorted_camera);
 
   undistorted_bitmap->Allocate(static_cast<int>(undistorted_camera->width),
                                static_cast<int>(undistorted_camera->height),
                                distorted_bitmap.IsRGB());
   distorted_bitmap.CloneMetadata(undistorted_bitmap);
 
-  WarpImageBetweenCameras(distorted_camera,
+  WarpImageBetweenCameras(non_refractive_distorted_camera_quad_tree,
                           *undistorted_camera,
                           distorted_bitmap,
                           undistorted_bitmap);
