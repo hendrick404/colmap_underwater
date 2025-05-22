@@ -343,7 +343,7 @@ void DenseReconstructionWidget::showEvent(QShowEvent* event) {
 }
 
 void DenseReconstructionWidget::Show(
-    std::shared_ptr<const Reconstruction> reconstruction) {
+    std::shared_ptr<Reconstruction> reconstruction) {
   reconstruction_ = std::move(reconstruction);
   show();
   raise();

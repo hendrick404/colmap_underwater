@@ -856,7 +856,7 @@ bool RefineRefractiveTwoViewGeometry(
   return summary.IsSolutionUsable();
 }
 
-Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id, const Camera& camera, const Reconstruction& reconstruction, image_t image_id) {
+Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id, const Camera& camera, Reconstruction& reconstruction, image_t image_id) {
   CHECK(camera.IsCameraRefractive())
       << "Camera is not refractive, cannot compute the best approximated "
          "non-refractive camera";
@@ -877,16 +877,24 @@ Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id
 
   std::ofstream distance_file;
   std::stringstream distance_file_name;
-  distance_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_distances";
+  distance_file_name << "/home/hendrik/masterproject/debug/img_" << image_id << "_distances";
   distance_file.open(distance_file_name.str());
   std::ofstream depth_file;
   std::stringstream depth_file_name;
-  depth_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_depths";
+  depth_file_name << "/home/hendrik/masterproject/debug/img_" << image_id << "_depths";
   depth_file.open(depth_file_name.str());
   std::ofstream error_file;
   std::stringstream error_file_name;
-  error_file_name << "/home/hendrik/masterproject/evaluation/img_" << image_id << "_reproj_error";
+  error_file_name << "/home/hendrik/masterproject/debug/img_" << image_id << "_reproj_error";
   error_file.open(error_file_name.str());
+  std::ofstream points3d_file;
+  std::stringstream points3d_file_name;
+  points3d_file_name << "/home/hendrik/masterproject/debug/img_" << image_id << "_3d_points";
+  points3d_file.open(points3d_file_name.str());
+  std::ofstream points2d_file;
+  std::stringstream points2d_file_name;
+  points2d_file_name << "/home/hendrik/masterproject/debug/img_" << image_id << "_2d_points";
+  points2d_file.open(points2d_file_name.str());
 
   LOG(INFO) << "Finding best fit from " << kNumSamples << " 2D-3D correspondences";
 
@@ -903,7 +911,9 @@ Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id
         break;
       }
       points2D[i] = point2D.xy;
-      points3D[i] = reconstruction.Image(image_id).CamFromWorld() * reconstruction.Point3D(point2D.point3D_id).xyz;
+      points3D[i] = reconstruction.Point3D(point2D.point3D_id).xyz;
+      points2d_file << points2D[i][0] << "," << points2D[i][1] << std::endl;
+      points3d_file << points3D[i][0] << "," << points3D[i][1] << "," << points3D[i][2] << std::endl;
       depth_file << points3D[i][2] << std::endl;
       double distance = sqrt(pow(points3D[i][0], 2) + pow(points3D[i][1], 2) +
                              pow(points3D[i][2], 2));
@@ -915,11 +925,11 @@ Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id
   }
   distance_file.close();
   depth_file.close();
-  double approx_depth = sum_distances / num_distances;
-  if (kNumSamples <= 100) {
-    LOG(WARNING) << "Found only " << kNumSamples <<  " samples, " << 100 << " are required" << std::endl;
-    return camera;
-  }
+  // double approx_depth = sum_distances / num_distances;
+  // if (kNumSamples <= 100) {
+  //   LOG(WARNING) << "Found only " << kNumSamples <<  " samples, " << 100 << " are required" << std::endl;
+  //   return camera;
+  // }
 
   ceres::Problem problem;
   ceres::Solver::Summary summary;
@@ -928,8 +938,8 @@ Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id
   solver_options.function_tolerance *= 1e-4;
   solver_options.gradient_tolerance *= 1e-4;
 
-  double cam_from_world_rotation[4] = {1, 0, 0, 0};
-  double cam_from_world_translation[3] = {0, 0, 0};
+  double* cam_from_world_rotation = reconstruction.Image(image_id).CamFromWorld().rotation.coeffs().data();
+  double* cam_from_world_translation = reconstruction.Image(image_id).CamFromWorld().translation.data();
   double* camera_params = tgt_camera.params.data();
 
   for (size_t i = 0; i < kNumSamples; i++) {
@@ -952,15 +962,16 @@ Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id
         cost_function, nullptr, cam_from_world_rotation, cam_from_world_translation, camera_params);
     // problem.SetParameterLowerBound(camera_params, 0, 0);
     // problem.SetParameterLowerBound(camera_params, 1, 0);
-    problem.SetParameterUpperBound(cam_from_world_translation, 2, -0.1 * approx_depth);
-    problem.SetParameterUpperBound(cam_from_world_translation, 2, 0.1 * approx_depth);
-    for (int i = 4; i < tgt_camera.params.size(); i++) {
-      problem.SetParameterLowerBound(camera_params, i, -0.1);
-      problem.SetParameterUpperBound(camera_params, i, 0.1);
-    }
+    // problem.SetParameterUpperBound(cam_from_world_translation, 2, -0.1 * approx_depth);
+    // problem.SetParameterUpperBound(cam_from_world_translation, 2, 0.1 * approx_depth);
+    // for (int i = 4; i < tgt_camera.params.size(); i++) {
+    //   problem.SetParameterLowerBound(camera_params, i, -0.1);
+    //   problem.SetParameterUpperBound(camera_params, i, 0.1);
+    // }
     // problem.SetParameterBlockConstant(cam_from_world_translation);
     problem.SetParameterBlockConstant(cam_from_world_rotation);
   }
+  SetQuaternionManifold(&problem, cam_from_world_rotation);
 
   solver_options.minimizer_progress_to_stdout = false;
   ceres::Solve(solver_options, &problem, &summary);
@@ -975,7 +986,7 @@ Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id
   } else {
     // Check for residuals.
     double reproj_error_sum = 0.0;
-    Rigid3d pose = Rigid3d(Eigen::Quaterniond::Identity(), Eigen::Vector3d(cam_from_world_translation));
+    Rigid3d pose = Rigid3d(Eigen::Quaterniond(cam_from_world_rotation), Eigen::Vector3d(cam_from_world_translation));
     for (size_t i = 0; i < kNumSamples; i++) {
       const double squared_reproj_error = CalculateSquaredReprojectionError(
           points2D[i], points3D[i], pose, tgt_camera, false);
@@ -986,7 +997,7 @@ Camera BestFitNonRefracCameraDecenterFromSparse(const CameraModelId tgt_model_id
               << " computed, aveBestFirage residual: " << reproj_error_sum
               << ", translation " << cam_from_world_translation[0] << ", "  << cam_from_world_translation[1] << ", "  << cam_from_world_translation[2]
               << ", camera parameters: " << tgt_camera.ParamsToString()
-              << std::endl;
+              << std::endl;    
   }
   return tgt_camera;
 }
@@ -997,6 +1008,7 @@ Camera BestFitNonRefracCameraDecenter(const CameraModelId tgt_model_id,
   CHECK(camera.IsCameraRefractive())
       << "Camera is not refractive, cannot compute the best approximated "
          "non-refractive camera";
+  CHECK(false);
 
   Camera tgt_camera = Camera::CreateFromModelId(camera.camera_id,
                                                 tgt_model_id,
@@ -1055,6 +1067,7 @@ Camera BestFitNonRefracCameraDecenter(const CameraModelId tgt_model_id,
     problem.SetParameterUpperBound(cam_from_world_translation, 2, - 0.1 * approx_depth);
     problem.SetParameterUpperBound(cam_from_world_translation, 2, 0.1 * approx_depth);
     problem.SetParameterBlockConstant(cam_from_world_rotation);
+    problem.SetParameterBlockConstant(cam_from_world_translation);
   }
 
   solver_options.minimizer_progress_to_stdout = false;
@@ -1147,12 +1160,12 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id,
   distance_file.close();
   depth_file.close();
 
-  if (num_distances > 0) {
-    double avg_distance = sum_distances / num_distances;
-    return BestFitNonRefracCamera(tgt_model_id, camera, avg_distance);
-  } else {
-    return camera;
-  }
+  // if (num_distances > 0) {
+  //   double avg_distance = sum_distances / num_distances;
+  //   return BestFitNonRefracCamera(tgt_model_id, camera, avg_distance);
+  // } else {
+  //   return camera;
+  // }
 
   if (i < kNumSamples) {
     LOG(WARNING) << "Incorrect number of 2D-3D-Correspondences allocated."
@@ -1218,6 +1231,7 @@ Camera BestFitNonRefracCameraFromSparse(const CameraModelId tgt_model_id,
               << std::endl;
     LOG(INFO) << "Camera parameters " << tgt_camera.ParamsToString()
               << std::endl;
+    LOG(INFO) << summary.FullReport() << std::endl;
   }
   return tgt_camera;
 }

@@ -69,7 +69,7 @@ UndistortionWidget::UndistortionWidget(QWidget* parent,
 }
 
 void UndistortionWidget::Show(
-    std::shared_ptr<const Reconstruction> reconstruction) {
+    std::shared_ptr<Reconstruction> reconstruction) {
   reconstruction_ = std::move(reconstruction);
   show();
   raise();

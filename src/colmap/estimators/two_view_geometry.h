@@ -196,7 +196,7 @@ bool RefineRefractiveTwoViewGeometry(
 // reconstruction.
 Camera BestFitNonRefracCameraDecenterFromSparse(CameraModelId tgt_model_id,
     const Camera& camera,
-    const Reconstruction& reconstruction,
+    Reconstruction& reconstruction,
     image_t image_id);
 
 // Compute a best approximated non-refractive camera model of the current

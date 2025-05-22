@@ -154,7 +154,7 @@ void WriteCOLMAPCommands(const bool geometric,
 }  // namespace
 
 COLMAPUndistorter::COLMAPUndistorter(const UndistortCameraOptions& options,
-                                     const Reconstruction& reconstruction,
+                                     Reconstruction& reconstruction,
                                      const std::string& image_path,
                                      const std::string& output_path,
                                      const int num_patch_match_src_images,
@@ -222,9 +222,10 @@ void COLMAPUndistorter::Run() {
   }
 
   LOG(INFO) << "Writing reconstruction...";
-  Reconstruction undistorted_reconstruction = reconstruction_;
-  UndistortReconstruction(options_, &undistorted_reconstruction);
-  undistorted_reconstruction.Write(JoinPaths(output_path_, "sparse"));
+  // Reconstruction undistorted_reconstruction = reconstruction_;
+  // UndistortReconstruction(options_, &undistorted_reconstruction);
+  // undistorted_reconstruction.Write(JoinPaths(output_path_, "sparse"));
+  reconstruction_.WriteText(JoinPaths(output_path_, "sparse"));
 
   LOG(INFO) << "Writing configuration...";
   WritePatchMatchConfig();
@@ -306,7 +307,7 @@ void COLMAPUndistorter::WriteScript(const bool geometric) const {
 }
 
 PMVSUndistorter::PMVSUndistorter(const UndistortCameraOptions& options,
-                                 const Reconstruction& reconstruction,
+                                 Reconstruction& reconstruction,
                                  const std::string& image_path,
                                  const std::string& output_path)
     : options_(options),
@@ -545,7 +546,7 @@ void PMVSUndistorter::WriteOptionFile() const {
 }
 
 CMPMVSUndistorter::CMPMVSUndistorter(const UndistortCameraOptions& options,
-                                     const Reconstruction& reconstruction,
+                                     Reconstruction& reconstruction,
                                      const std::string& image_path,
                                      const std::string& output_path)
     : options_(options),
@@ -963,18 +964,14 @@ void UndistortImage(const UndistortCameraOptions& options,
                     const Camera& distorted_camera,
                     Bitmap* undistorted_bitmap,
                     Camera* undistorted_camera,
-                    const Reconstruction* reconstruction,
+                    Reconstruction* reconstruction,
                     image_t image_id) {
   CHECK_EQ(distorted_camera.width, distorted_bitmap.Width());
   CHECK_EQ(distorted_camera.height, distorted_bitmap.Height());
 
   const Camera& non_refractive_distorted_camera = (
-    distorted_camera.IsCameraRefractive() ? (
-      reconstruction != NULL ? (
-        BestFitNonRefracCameraDecenterFromSparse(CameraModelId::kFullOpenCV, distorted_camera, *reconstruction, image_id)
-      ) : (
-        BestFitNonRefracCameraDecenter(CameraModelId::kFullOpenCV, distorted_camera, 0.4)
-      )
+    distorted_camera.IsCameraRefractive() && reconstruction != NULL ? (
+        BestFitNonRefracCameraDecenterFromSparse(CameraModelId::kOpenCV, distorted_camera, *reconstruction, image_id)
     ) : distorted_camera
   );
 
@@ -989,6 +986,24 @@ void UndistortImage(const UndistortCameraOptions& options,
                           *undistorted_camera,
                           distorted_bitmap,
                           undistorted_bitmap);
+
+  if (reconstruction != NULL) {
+    camera_t camera_id = 1;
+    while (reconstruction->ExistsCamera(camera_id)) {
+      camera_id++;
+    }
+    undistorted_camera->camera_id = camera_id;
+    reconstruction->AddCamera(*undistorted_camera);
+    reconstruction->Image(image_id).SetCameraId(undistorted_camera->camera_id);
+    auto& image = reconstruction->Image(image_id);
+    for (point2D_t point2D_idx = 0; point2D_idx < image.NumPoints2D();
+         ++point2D_idx) {
+      auto& point2D = image.Point2D(point2D_idx);
+      point2D.xy = undistorted_camera->ImgFromCam(distorted_camera.CamFromImg(point2D.xy));
+    }
+  } else {
+    LOG(WARNING) << "Can not write undistorted camera to reconstruction. Make sure UndistortReconstruction is called.";
+  }
 }
 
 void UndistortReconstruction(const UndistortCameraOptions& options,

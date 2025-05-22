@@ -65,7 +65,7 @@ class COLMAPUndistorter : public Thread {
  public:
   COLMAPUndistorter(
       const UndistortCameraOptions& options,
-      const Reconstruction& reconstruction,
+      Reconstruction& reconstruction,
       const std::string& image_path,
       const std::string& output_path,
       int num_related_images = 20,
@@ -85,7 +85,7 @@ class COLMAPUndistorter : public Thread {
   const std::string output_path_;
   const CopyType copy_type_;
   const int num_patch_match_src_images_;
-  const Reconstruction& reconstruction_;
+  Reconstruction& reconstruction_;
   const std::vector<image_t> image_ids_;
   std::vector<std::string> image_names_;
 };
@@ -94,7 +94,7 @@ class COLMAPUndistorter : public Thread {
 class PMVSUndistorter : public Thread {
  public:
   PMVSUndistorter(const UndistortCameraOptions& options,
-                  const Reconstruction& reconstruction,
+                  Reconstruction& reconstruction,
                   const std::string& image_path,
                   const std::string& output_path);
 
@@ -112,14 +112,14 @@ class PMVSUndistorter : public Thread {
   UndistortCameraOptions options_;
   std::string image_path_;
   std::string output_path_;
-  const Reconstruction& reconstruction_;
+  Reconstruction& reconstruction_;
 };
 
 // Undistort images and prepare data for CMP-MVS.
 class CMPMVSUndistorter : public Thread {
  public:
   CMPMVSUndistorter(const UndistortCameraOptions& options,
-                    const Reconstruction& reconstruction,
+                    Reconstruction& reconstruction,
                     const std::string& image_path,
                     const std::string& output_path);
 
@@ -131,7 +131,7 @@ class CMPMVSUndistorter : public Thread {
   UndistortCameraOptions options_;
   std::string image_path_;
   std::string output_path_;
-  const Reconstruction& reconstruction_;
+  Reconstruction& reconstruction_;
 };
 
 // Undistort images and export undistorted cameras without the need for a
@@ -206,7 +206,7 @@ void UndistortImage(const UndistortCameraOptions& options,
                     const Camera& distorted_camera,
                     Bitmap* undistorted_image,
                     Camera* undistorted_camera,
-                    const Reconstruction* reconstruction,
+                    Reconstruction* reconstruction,
                     image_t image_id);
 
 // Undistort image such that the viewing geometry of the undistorted image
